@@ -1,0 +1,8 @@
+polygon-api-client
+openai
+pandas
+numpy
+ta-lib-binary
+python-dotenv
+requests
+
