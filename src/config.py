@@ -14,6 +14,6 @@ SYMBOLS = {
     "dxy": "DX-Y.NYB",   # US Dollar Index
     "us10y": "^TNX"      # 10-Year Treasury Yield
 }
-OPENROUTER_MODEL = "openai/gpt-4o-mini"
+OPENROUTER_MODEL = "x-ai/grok-2-1212"
 VOLATILITY_LOOKBACK = 20
 
