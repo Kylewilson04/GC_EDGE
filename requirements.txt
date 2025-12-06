@@ -5,4 +5,5 @@ numpy
 ta
 python-dotenv
 requests
+pytz
 

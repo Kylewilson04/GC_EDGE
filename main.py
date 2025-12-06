@@ -39,31 +39,47 @@ async def run_pipeline():
         messenger = DiscordBot()
 
         # === DATA LAYER ===
-        logger.info("[1/6] Fetching market data...")
+        logger.info("[1/6] Fetching CME session data...")
         gold_symbol = SYMBOLS["gold"]
-        gold_data = await data_engine.fetch_ohlcv(gold_symbol)
         
-        if gold_data is None or gold_data.empty:
-            logger.error("Failed to fetch gold data - aborting pipeline")
+        # Fetch proper CME session-aligned data
+        session_data = await data_engine.fetch_session_ohlcv(gold_symbol)
+        
+        if session_data is None:
+            logger.error("Failed to fetch gold session data - aborting pipeline")
             return False
 
-        logger.info(f"  ✓ Gold data: {len(gold_data)} bars")
+        logger.info(f"  ✓ Session: {session_data['session_start']} to {session_data['session_end']}")
+        logger.info(f"  ✓ OHLC: O={session_data['open']} H={session_data['high']} L={session_data['low']} C={session_data['close']}")
+        logger.info(f"  ✓ Bars in session: {session_data['bars_in_session']}")
+
+        # Also fetch hourly data for analysis engine (VPOC, regime)
+        gold_hourly = await data_engine.fetch_ohlcv(gold_symbol, period="5d", interval="1h")
 
         # === MATH LAYER ===
         logger.info("[2/6] Computing correlations...")
         correlation_matrix = await data_engine.get_correlations()
-        logger.info(f"  ✓ Correlations computed")
+        if not correlation_matrix.empty:
+            logger.info(f"  ✓ Correlations computed")
+        else:
+            logger.info(f"  ⚠ Correlations unavailable")
 
         logger.info("[3/6] Calculating volatility levels...")
-        volatility_levels = data_engine.calc_volatility_levels(gold_data["close"])
-        logger.info(f"  ✓ Volatility: {volatility_levels.get('annualized_volatility', 'N/A')}% annualized")
+        volatility_levels = data_engine.calc_volatility_levels(session_data)
+        logger.info(f"  ✓ Pivot: {volatility_levels.get('pivot', 'N/A')}")
+        logger.info(f"  ✓ Session Range: {volatility_levels.get('session_range', 'N/A')} pts")
 
         # === ANALYSIS LAYER ===
         logger.info("[4/6] Analyzing market structure...")
-        market_structure = analyst.analyze_market_structure(gold_data)
-        market_regime = analyst.get_market_regime(gold_data)
-        logger.info(f"  ✓ Regime: {market_regime}")
-        logger.info(f"  ✓ VPOC: {market_structure.get('vpoc', 'N/A')}")
+        if gold_hourly is not None and not gold_hourly.empty:
+            market_structure = analyst.analyze_market_structure(gold_hourly)
+            market_regime = analyst.get_market_regime(gold_hourly)
+            logger.info(f"  ✓ Regime: {market_regime}")
+            logger.info(f"  ✓ VPOC: {market_structure.get('vpoc', 'N/A')}")
+        else:
+            market_structure = {"vpoc": session_data.get("vwap")}
+            market_regime = "Unknown"
+            logger.info(f"  ⚠ Using VWAP as VPOC proxy: {session_data.get('vwap')}")
 
         # === POSITIONING LAYER ===
         logger.info("[5/6] Fetching COT positioning & calendar...")
@@ -81,15 +97,21 @@ async def run_pipeline():
             logger.info(f"  ⚠ {event_context['risk_warning']}")
 
         # === BUILD DATA PACKAGE ===
-        current_price = float(gold_data["close"].iloc[-1])
-        prev_close = float(gold_data["close"].iloc[-2]) if len(gold_data) > 1 else current_price
-        daily_change = round(((current_price - prev_close) / prev_close) * 100, 2)
-
         market_data_dict = {
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M UTC"),
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M ET"),
             "symbol": gold_symbol,
-            "current_price": current_price,
-            "daily_change_pct": daily_change,
+            "session_data": {
+                "open": session_data["open"],
+                "high": session_data["high"],
+                "low": session_data["low"],
+                "close": session_data["close"],
+                "volume": session_data["volume"],
+                "vwap": session_data["vwap"],
+                "pivot": session_data["pivot"],
+                "session_start": session_data["session_start"],
+                "session_end": session_data["session_end"]
+            },
+            "current_price": session_data["close"],
             "correlations": correlation_matrix.to_dict() if not correlation_matrix.empty else {},
             "volatility_levels": volatility_levels,
             "market_structure": {
@@ -100,8 +122,9 @@ async def run_pipeline():
             "cot_positioning": cot_positioning,
             "event_calendar": event_context,
             "data_quality": {
-                "bars_analyzed": len(gold_data),
-                "data_source": "Yahoo Finance (15-min delayed)"
+                "bars_in_session": session_data["bars_in_session"],
+                "data_source": "Yahoo Finance (CME Session Aligned)",
+                "session_alignment": "18:00 ET to 17:00 ET"
             }
         }
 
