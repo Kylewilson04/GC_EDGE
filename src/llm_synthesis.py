@@ -119,6 +119,34 @@ class ReasoningCore:
             }
         ) if OPENROUTER_API_KEY else None
 
+    def _format_tradingview_data(self, market_data_dict: Dict) -> str:
+        """Format sigma levels and VPOC as CSV for TradingView copy-paste."""
+        vol_levels = market_data_dict.get("volatility_levels", {})
+        market_structure = market_data_dict.get("market_structure", {})
+        
+        # Extract values with fallbacks
+        sigma_2_up = vol_levels.get("2_sigma_up", 0)
+        sigma_1_up = vol_levels.get("1_sigma_up", 0)
+        pivot = vol_levels.get("pivot", 0)
+        sigma_1_down = vol_levels.get("1_sigma_down", 0)
+        sigma_2_down = vol_levels.get("2_sigma_down", 0)
+        vpoc = market_structure.get("vpoc", 0)
+        
+        # Round to 1 decimal place
+        csv_data = f"{sigma_2_up:.1f},{sigma_1_up:.1f},{pivot:.1f},{sigma_1_down:.1f},{sigma_2_down:.1f},{vpoc:.1f}"
+        
+        tradingview_section = f"""
+
+---
+## ⚡ TRADINGVIEW DATA ⚡
+**Copy-paste for TradingView indicators:**
+```
+{csv_data}
+```
+*Format: +2σ, +1σ, pivot, -1σ, -2σ, VPOC*"""
+        
+        return tradingview_section
+
     async def generate_report(self, market_data_dict: Dict) -> str:
         """Generate institutional-grade trading intelligence report."""
         if not self.client:
@@ -143,7 +171,14 @@ class ReasoningCore:
                 )
 
                 report = response.choices[0].message.content
-                return report if report else "# ⚠️ Error: Empty response from LLM"
+                if not report:
+                    return "# ⚠️ Error: Empty response from LLM"
+                
+                # Append TradingView data section
+                tradingview_data = self._format_tradingview_data(market_data_dict)
+                report = f"{report}{tradingview_data}"
+                
+                return report
 
             except Exception as e:
                 if attempt == max_retries - 1:
