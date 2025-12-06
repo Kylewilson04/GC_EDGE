@@ -2,10 +2,10 @@ import asyncio
 import logging
 import numpy as np
 import pandas as pd
-from polygon import RESTClient
-from typing import Dict, List, Optional
+import yfinance as yf
+from typing import Dict, Optional
 from functools import wraps
-from src.config import POLYGON_API_KEY, SYMBOLS, VOLATILITY_LOOKBACK
+from src.config import SYMBOLS, VOLATILITY_LOOKBACK
 
 logger = logging.getLogger(__name__)
 
@@ -30,71 +30,49 @@ def retry_on_failure(max_retries: int = 3, delay: float = 1.0):
 
 class MarketData:
     def __init__(self):
-        self.client = RESTClient(POLYGON_API_KEY) if POLYGON_API_KEY else None
+        pass
 
     @retry_on_failure(max_retries=3, delay=1.0)
-    async def fetch_ohlcv(self, symbol: str, limit: int = 5000) -> Optional[pd.DataFrame]:
-        """Fetch OHLCV data from Polygon API with retry logic."""
-        if not self.client:
-            logger.error("Polygon API key not configured")
-            return None
-
+    async def fetch_ohlcv(self, symbol: str, period: str = "1mo", interval: str = "1h") -> Optional[pd.DataFrame]:
+        """Fetch OHLCV data from Yahoo Finance."""
         def _fetch_sync():
-            from datetime import datetime, timedelta
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=30)
-            
-            aggs_list = self.client.list_aggs(
-                ticker=symbol,
-                multiplier=1,
-                timespan="minute",
-                from_=start_date.strftime("%Y-%m-%d"),
-                to=end_date.strftime("%Y-%m-%d"),
-                limit=limit
-            )
-            
-            aggs = []
-            for agg in aggs_list:
-                aggs.append({
-                    "timestamp": pd.Timestamp(agg.timestamp, unit="ms"),
-                    "open": agg.open,
-                    "high": agg.high,
-                    "low": agg.low,
-                    "close": agg.close,
-                    "volume": agg.volume
-                })
-            return aggs
+            ticker = yf.Ticker(symbol)
+            df = ticker.history(period=period, interval=interval)
+            return df
 
-        aggs = await asyncio.to_thread(_fetch_sync)
+        df = await asyncio.to_thread(_fetch_sync)
 
-        if not aggs:
+        if df is None or df.empty:
             logger.warning(f"No data fetched for {symbol}")
             return None
 
-        df = pd.DataFrame(aggs)
-        df.set_index("timestamp", inplace=True)
-        df.sort_index(inplace=True)
+        df.columns = df.columns.str.lower()
+        df.index.name = "timestamp"
         return df
 
     async def get_correlations(self) -> pd.DataFrame:
         """Fetch Gold, DXY, US10Y and return correlation matrix with aligned timestamps."""
-        tasks = [self.fetch_ohlcv(symbol) for symbol in SYMBOLS]
+        tasks = [self.fetch_ohlcv(symbol) for symbol in SYMBOLS.values()]
         dataframes = await asyncio.gather(*tasks)
 
-        valid_data = [(symbol, df) for symbol, df in zip(SYMBOLS, dataframes) if df is not None and not df.empty]
+        valid_data = [
+            (name, df) 
+            for (name, symbol), df in zip(SYMBOLS.items(), dataframes) 
+            if df is not None and not df.empty
+        ]
         
         if len(valid_data) < 2:
             logger.error("Insufficient data for correlation calculation")
             return pd.DataFrame()
 
         closes = pd.DataFrame()
-        for symbol, df in valid_data:
-            closes[symbol] = df["close"]
+        for name, df in valid_data:
+            closes[name.upper()] = df["close"]
 
         if closes.empty:
             return pd.DataFrame()
 
-        closes = closes.resample('5T').last().dropna()
+        closes = closes.dropna()
         
         if len(closes) < 10:
             logger.warning("Insufficient aligned data points for correlation")
@@ -126,13 +104,12 @@ class MarketData:
         daily_range_2sigma = current_price * (2 * daily_vol)
 
         levels = {
-            "2_sigma_up": current_price + daily_range_2sigma,
-            "1_sigma_up": current_price + daily_range_1sigma,
-            "pivot": current_price,
-            "1_sigma_down": current_price - daily_range_1sigma,
-            "2_sigma_down": current_price - daily_range_2sigma,
-            "annualized_volatility": annualized_vol
+            "2_sigma_up": round(current_price + daily_range_2sigma, 2),
+            "1_sigma_up": round(current_price + daily_range_1sigma, 2),
+            "pivot": round(current_price, 2),
+            "1_sigma_down": round(current_price - daily_range_1sigma, 2),
+            "2_sigma_down": round(current_price - daily_range_2sigma, 2),
+            "annualized_volatility": round(annualized_vol * 100, 2)
         }
 
         return levels
-

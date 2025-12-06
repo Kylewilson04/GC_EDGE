@@ -16,9 +16,9 @@ Production-ready trading intelligence system for Gold Futures (GC) analysis with
 
 - Python 3.10+
 - API Keys:
-  - `POLYGON_API_KEY` - Polygon.io API key
   - `OPENROUTER_API_KEY` - OpenRouter API key
   - `DISCORD_WEBHOOK_URL` - Discord webhook URL
+- Note: Market data from Yahoo Finance (free, no API key needed)
 
 ## Installation
 
@@ -33,13 +33,13 @@ cd GCedge
 pip install -r requirements.txt
 ```
 
-3. Create `.env` file (copy from `.env.example`):
+3. Create `.env` file:
 ```bash
-POLYGON_API_KEY=your_polygon_key
 OPENROUTER_API_KEY=your_openrouter_key
 DISCORD_WEBHOOK_URL=your_discord_webhook_url
 SITE_URL=http://localhost
 SITE_NAME=GoldSovereign
+RUN_INTERVAL_MINUTES=60
 ```
 
 ## Usage
@@ -102,7 +102,6 @@ railway up
 ```
 
 4. Add environment variables in Railway dashboard:
-   - `POLYGON_API_KEY`
    - `OPENROUTER_API_KEY`
    - `DISCORD_WEBHOOK_URL`
    - `RUN_INTERVAL_MINUTES` (e.g., `60` for hourly reports)

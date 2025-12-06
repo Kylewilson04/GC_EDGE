@@ -1,8 +1,8 @@
-polygon-api-client
+yfinance
 openai
 pandas
 numpy
-ta-lib-binary
+ta
 python-dotenv
 requests
 

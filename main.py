@@ -32,7 +32,7 @@ async def main():
         messenger = DiscordBot()
 
         logger.info("Fetching market data...")
-        gold_symbol = SYMBOLS[0]
+        gold_symbol = SYMBOLS["gold"]
         gold_data = await data_engine.fetch_ohlcv(gold_symbol)
         
         if gold_data is None or gold_data.empty:
