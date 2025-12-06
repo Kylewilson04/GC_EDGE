@@ -14,6 +14,6 @@ SYMBOLS = {
     "dxy": "DX-Y.NYB",   # US Dollar Index
     "us10y": "^TNX"      # 10-Year Treasury Yield
 }
-OPENROUTER_MODEL = "anthropic/claude-3.5-sonnet"
+OPENROUTER_MODEL = "anthropic/claude-3-5-sonnet-20241022"
 VOLATILITY_LOOKBACK = 20
 
