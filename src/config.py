@@ -14,6 +14,6 @@ SYMBOLS = {
     "dxy": "DX-Y.NYB",   # US Dollar Index
     "us10y": "^TNX"      # 10-Year Treasury Yield
 }
-OPENROUTER_MODEL = "x-ai/grok-2-1212"
+OPENROUTER_MODEL = "x-ai/grok-4.1-fast"
 VOLATILITY_LOOKBACK = 20
 
