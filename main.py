@@ -1,7 +1,8 @@
 import asyncio
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from src.config import SYMBOLS
 from src.data_engine import MarketData
 from src.analysis_engine import LocalAnalyst
@@ -20,7 +21,27 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-RUN_INTERVAL_MINUTES = int(os.getenv("RUN_INTERVAL_MINUTES", "0"))
+# Timezone for scheduling
+ET_TZ = ZoneInfo("America/New_York")
+
+# Target execution time (05:00 ET Pre-Market)
+TARGET_HOUR = 5
+TARGET_MINUTE = 0
+
+
+def get_seconds_until_target(target_hour: int = TARGET_HOUR, target_minute: int = TARGET_MINUTE) -> float:
+    """Calculate seconds until the next target time (05:00 ET)."""
+    now = datetime.now(ET_TZ)
+    
+    # Create target time for today
+    target_time = now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
+    
+    # If we've already passed today's target, schedule for tomorrow
+    if now >= target_time:
+        target_time = target_time + timedelta(days=1)
+    
+    seconds_until = (target_time - now).total_seconds()
+    return seconds_until, target_time
 
 
 async def run_pipeline():
@@ -98,7 +119,7 @@ async def run_pipeline():
 
         # === BUILD DATA PACKAGE ===
         market_data_dict = {
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M ET"),
+            "timestamp": datetime.now(ET_TZ).strftime("%Y-%m-%d %H:%M ET"),
             "symbol": gold_symbol,
             "session_data": {
                 "open": session_data["open"],
@@ -151,18 +172,54 @@ async def run_pipeline():
         return False
 
 
-async def scheduled_runner():
-    """Run the pipeline on a schedule."""
-    logger.info(f"Starting scheduled runner with {RUN_INTERVAL_MINUTES} minute interval")
+async def daily_scheduler():
+    """Run the pipeline once daily at 05:00 ET (Pre-Market Brief)."""
+    logger.info("=" * 50)
+    logger.info("Gold_Sovereign_AI Daily Scheduler Started")
+    logger.info(f"Target execution time: {TARGET_HOUR:02d}:{TARGET_MINUTE:02d} ET")
+    logger.info("=" * 50)
     
     while True:
+        try:
+            # Calculate time until next execution
+            seconds_until, target_time = get_seconds_until_target()
+            hours_until = seconds_until / 3600
+            
+            logger.info(f"🛌 Hypersleep engaged. Waking up in {hours_until:.1f} hours for the 05:00 ET Pre-Market Brief.")
+            logger.info(f"   Next execution: {target_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+            
+            # Sleep until target time
+            await asyncio.sleep(seconds_until)
+            
+            # Execute the pipeline
+            logger.info("⏰ Wake up! Executing Pre-Market Brief...")
+            try:
+                await run_pipeline()
+            except Exception as e:
+                logger.error(f"❌ Pipeline execution failed: {e}", exc_info=True)
+                logger.info("Pipeline failed but scheduler will continue. Sleeping until tomorrow...")
+            
+            # Small delay to ensure we don't double-execute
+            await asyncio.sleep(60)
+            
+        except Exception as e:
+            logger.error(f"❌ Scheduler error: {e}", exc_info=True)
+            logger.info("Scheduler encountered an error. Retrying in 5 minutes...")
+            await asyncio.sleep(300)
+
+
+async def main():
+    """Main entry point - run once or schedule based on environment."""
+    run_once = os.getenv("RUN_ONCE", "false").lower() == "true"
+    
+    if run_once:
+        # Single execution mode (for testing)
+        logger.info("Running in single execution mode (RUN_ONCE=true)")
         await run_pipeline()
-        logger.info(f"Next run in {RUN_INTERVAL_MINUTES} minutes...")
-        await asyncio.sleep(RUN_INTERVAL_MINUTES * 60)
+    else:
+        # Daily scheduled mode (production)
+        await daily_scheduler()
 
 
 if __name__ == "__main__":
-    if RUN_INTERVAL_MINUTES > 0:
-        asyncio.run(scheduled_runner())
-    else:
-        asyncio.run(run_pipeline())
+    asyncio.run(main())
