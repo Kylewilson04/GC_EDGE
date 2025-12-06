@@ -9,6 +9,8 @@ Production-ready trading intelligence system for Gold Futures (GC) analysis with
 - **Vectorized Math**: NumPy/Pandas for efficient volatility and correlation calculations
 - **Market Structure Analysis**: VPOC identification and regime detection (Trend/Balance/Compressed)
 - **Volatility Levels**: Sigma-based support/resistance levels (1σ, 2σ)
+- **COT Positioning**: Weekly CFTC Commitment of Traders data for speculator/commercial positioning
+- **Economic Calendar**: FOMC, NFP, CPI event awareness with risk warnings
 - **LLM Synthesis**: Claude 3.5 Sonnet via OpenRouter for institutional-grade reports
 - **Discord Integration**: Automated webhook delivery with automatic chunking
 
@@ -62,14 +64,28 @@ Logs are written to `gold_sovereign_ai.log` and stdout.
 
 ```
 src/
-├── config.py          # Environment variables and constants
-├── data_engine.py     # MarketData: Polygon fetching, correlations, volatility
-├── analysis_engine.py # LocalAnalyst: VPOC, market regime
-├── llm_synthesis.py   # ReasoningCore: OpenRouter/Claude integration
-└── messenger.py       # DiscordBot: Webhook delivery with chunking
+├── config.py           # Environment variables and constants
+├── data_engine.py      # MarketData: Yahoo Finance fetching, correlations, volatility
+├── analysis_engine.py  # LocalAnalyst: VPOC, market regime
+├── cot_data.py         # COTAnalyzer: CFTC positioning data
+├── economic_calendar.py # EconomicCalendar: FOMC, NFP, CPI events
+├── llm_synthesis.py    # ReasoningCore: OpenRouter/Claude integration
+└── messenger.py        # DiscordBot: Webhook delivery with chunking
 
-main.py                # Orchestration pipeline
+main.py                 # Orchestration pipeline
 ```
+
+## Report Format
+
+The system generates institutional-grade reports with:
+
+1. **Executive Summary** - Bias, confidence, key level
+2. **Market Structure** - VPOC, Value Area, Regime
+3. **Volatility Levels** - 1σ/2σ bands with context
+4. **Macro Correlations** - DXY, Yields analysis
+5. **COT Positioning** - Speculator/Commercial positioning
+6. **Event Risk** - Upcoming FOMC/NFP/CPI warnings
+7. **Game Theory Scenarios** - Bull/Bear cases with targets
 
 ## Configuration
 
