@@ -124,10 +124,29 @@ class MarketData:
             # Calculate Pivot Point (H + L + C) / 3
             pivot = (session_high + session_low + session_close) / 3
             
+            # Get the actual close bar timestamp for verification
+            close_bar_time = session_df.index[-1]
+            open_bar_time = session_df.index[0]
+            
+            # Log verification data
+            logger.info("=" * 40)
+            logger.info("🔍 CME SESSION VERIFICATION DATA")
+            logger.info("=" * 40)
+            logger.info(f"  Session Date: {session_end.strftime('%Y-%m-%d')}")
+            logger.info(f"  First Bar:  {open_bar_time} → Open: ${session_open:.2f}")
+            logger.info(f"  Last Bar:   {close_bar_time} → Close: ${session_close:.2f}")
+            logger.info(f"  High: ${session_high:.2f} | Low: ${session_low:.2f}")
+            logger.info(f"  Pivot (H+L+C)/3: ${pivot:.2f}")
+            logger.info("=" * 40)
+            logger.info("⚠️  VERIFY: Compare 'Close' above with CME 'Prior Settle'")
+            logger.info("   https://www.cmegroup.com/markets/metals/precious/gold.settlements.html")
+            logger.info("=" * 40)
+            
             return {
                 "symbol": symbol,
                 "session_start": session_start.isoformat(),
                 "session_end": session_end.isoformat(),
+                "session_date": session_end.strftime('%Y-%m-%d'),
                 "open": round(session_open, 2),
                 "high": round(session_high, 2),
                 "low": round(session_low, 2),
@@ -135,7 +154,9 @@ class MarketData:
                 "volume": round(session_volume, 0),
                 "vwap": round(vwap, 2),
                 "pivot": round(pivot, 2),
-                "bars_in_session": len(session_df)
+                "bars_in_session": len(session_df),
+                "first_bar_time": str(open_bar_time),
+                "last_bar_time": str(close_bar_time)
             }
         
         return await asyncio.to_thread(_fetch_and_aggregate)

@@ -123,6 +123,7 @@ class ReasoningCore:
         """Format sigma levels and VPOC as CSV for TradingView copy-paste."""
         vol_levels = market_data_dict.get("volatility_levels", {})
         market_structure = market_data_dict.get("market_structure", {})
+        session_data = market_data_dict.get("session_data", {})
         
         # Extract values with fallbacks
         sigma_2_up = vol_levels.get("2_sigma_up", 0)
@@ -131,6 +132,12 @@ class ReasoningCore:
         sigma_1_down = vol_levels.get("1_sigma_down", 0)
         sigma_2_down = vol_levels.get("2_sigma_down", 0)
         vpoc = market_structure.get("vpoc", 0)
+        
+        # Session verification data
+        session_close = session_data.get("close", 0)
+        session_high = session_data.get("high", 0)
+        session_low = session_data.get("low", 0)
+        session_date = session_data.get("session_end", "")[:10] if session_data.get("session_end") else "N/A"
         
         # Round to 1 decimal place
         csv_data = f"{sigma_2_up:.1f},{sigma_1_up:.1f},{pivot:.1f},{sigma_1_down:.1f},{sigma_2_down:.1f},{vpoc:.1f}"
@@ -143,7 +150,19 @@ class ReasoningCore:
 ```
 {csv_data}
 ```
-*Format: +2σ, +1σ, pivot, -1σ, -2σ, VPOC*"""
+*Format: +2σ, +1σ, pivot, -1σ, -2σ, VPOC*
+
+---
+## 🔍 CME VERIFICATION
+| Field | Value |
+|-------|-------|
+| Session Date | {session_date} |
+| Session Close | ${session_close:.2f} |
+| Session High | ${session_high:.2f} |
+| Session Low | ${session_low:.2f} |
+| Calculated Pivot | ${pivot:.1f} |
+
+⚠️ **Verify:** Compare Session Close with [CME Prior Settle](https://www.cmegroup.com/markets/metals/precious/gold.settlements.html)"""
         
         return tradingview_section
 
