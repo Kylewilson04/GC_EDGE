@@ -2,28 +2,24 @@ import asyncio
 import logging
 import pandas as pd
 from typing import Dict, Optional
-from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
-# CFTC COT Report URLs
-COT_LEGACY_URL = "https://www.cftc.gov/dea/newcot/deafut.txt"
+# CFTC COT Report URL - Futures Only
+COT_URL = "https://www.cftc.gov/dea/newcot/deafut.txt"
 
 
 class COTAnalyzer:
     """Commitment of Traders data analyzer for Gold Futures positioning."""
     
     def __init__(self):
-        self.gold_contract_code = "088691"  # CFTC code for Gold
+        pass
     
     async def fetch_cot_data(self) -> Optional[pd.DataFrame]:
         """Fetch latest COT data from CFTC."""
         def _fetch_sync():
             try:
-                df = pd.read_csv(
-                    COT_LEGACY_URL,
-                    low_memory=False
-                )
+                df = pd.read_csv(COT_URL, low_memory=False)
                 return df
             except Exception as e:
                 logger.error(f"Error fetching COT data: {e}")
@@ -40,12 +36,21 @@ class COTAnalyzer:
             return self._empty_positioning()
         
         try:
-            # Filter for Gold futures
-            gold_df = df[df['CFTC_Contract_Market_Code'].astype(str) == self.gold_contract_code]
+            # Clean column names (remove extra spaces)
+            df.columns = df.columns.str.strip()
             
-            if gold_df.empty:
-                # Try alternative: search by name
-                gold_df = df[df['Market_and_Exchange_Names'].str.contains('GOLD', case=False, na=False)]
+            # Find Gold - search in market name column
+            name_col = None
+            for col in df.columns:
+                if 'Market' in col and 'Name' in col:
+                    name_col = col
+                    break
+            
+            if name_col is None:
+                name_col = df.columns[0]
+            
+            # Filter for Gold futures
+            gold_df = df[df[name_col].str.contains('GOLD', case=False, na=False)]
             
             if gold_df.empty:
                 logger.warning("Gold contract not found in COT data")
@@ -53,21 +58,35 @@ class COTAnalyzer:
             
             latest = gold_df.iloc[-1]
             
-            # Commercial (Hedgers) - typically producers/consumers
-            comm_long = int(latest.get('Comm_Positions_Long_All', 0))
-            comm_short = int(latest.get('Comm_Positions_Short_All', 0))
-            comm_net = comm_long - comm_short
+            # Find correct column names dynamically
+            def find_col(patterns):
+                for col in df.columns:
+                    col_lower = col.lower()
+                    if all(p.lower() in col_lower for p in patterns):
+                        return col
+                return None
             
-            # Non-Commercial (Speculators) - hedge funds, CTAs
-            noncomm_long = int(latest.get('NonComm_Positions_Long_All', 0))
-            noncomm_short = int(latest.get('NonComm_Positions_Short_All', 0))
-            noncomm_net = noncomm_long - noncomm_short
+            # Non-Commercial (Speculators)
+            nc_long_col = find_col(['noncomm', 'long']) or find_col(['non-commercial', 'long'])
+            nc_short_col = find_col(['noncomm', 'short']) or find_col(['non-commercial', 'short'])
+            
+            # Commercial (Hedgers)  
+            comm_long_col = find_col(['comm', 'long'])
+            comm_short_col = find_col(['comm', 'short'])
             
             # Open Interest
-            open_interest = int(latest.get('Open_Interest_All', 0))
+            oi_col = find_col(['open', 'interest'])
             
-            # Report date
-            report_date = str(latest.get('As_of_Date_In_Form_YYMMDD', 'Unknown'))
+            # Extract values with fallbacks
+            noncomm_long = int(latest.get(nc_long_col, 0)) if nc_long_col else 0
+            noncomm_short = int(latest.get(nc_short_col, 0)) if nc_short_col else 0
+            noncomm_net = noncomm_long - noncomm_short
+            
+            comm_long = int(latest.get(comm_long_col, 0)) if comm_long_col else 0
+            comm_short = int(latest.get(comm_short_col, 0)) if comm_short_col else 0
+            comm_net = comm_long - comm_short
+            
+            open_interest = int(latest.get(oi_col, 0)) if oi_col else 0
             
             # Calculate percentages
             if open_interest > 0:
@@ -86,7 +105,7 @@ class COTAnalyzer:
                 bias_strength = "Strong" if abs(noncomm_net) > 100000 else "Moderate"
             
             return {
-                "report_date": report_date,
+                "report_date": "Latest",
                 "speculators": {
                     "long": noncomm_long,
                     "short": noncomm_short,
@@ -130,4 +149,3 @@ class COTAnalyzer:
             "open_interest": 0,
             "available": False
         }
-

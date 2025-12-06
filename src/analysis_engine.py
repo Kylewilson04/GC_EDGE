@@ -26,7 +26,7 @@ class LocalAnalyst:
         price_bins = np.linspace(price_min, price_max, bins + 1)
         df["price_bin"] = pd.cut(df["close"], bins=price_bins, include_lowest=True)
         
-        volume_profile = df.groupby("price_bin")["volume"].sum()
+        volume_profile = df.groupby("price_bin", observed=True)["volume"].sum()
         
         if volume_profile.empty:
             return {"vpoc": float(df["close"].iloc[-1])}
