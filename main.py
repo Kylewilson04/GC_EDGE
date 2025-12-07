@@ -30,7 +30,7 @@ TARGET_MINUTE = 0
 
 
 def get_seconds_until_target(target_hour: int = TARGET_HOUR, target_minute: int = TARGET_MINUTE) -> float:
-    """Calculate seconds until the next target time (05:00 ET)."""
+    """Calculate seconds until the next valid trading day at target time (05:00 ET)."""
     now = datetime.now(ET_TZ)
     
     # Create target time for today
@@ -38,6 +38,13 @@ def get_seconds_until_target(target_hour: int = TARGET_HOUR, target_minute: int 
     
     # If we've already passed today's target, schedule for tomorrow
     if now >= target_time:
+        target_time = target_time + timedelta(days=1)
+    
+    # Skip weekends (Saturday=5, Sunday=6)
+    # CME Gold Futures: Closed Saturday & Sunday
+    # Friday's session ends at 17:00 ET Friday, reopens Sunday 18:00 ET
+    # So we only run reports Mon-Fri
+    while target_time.weekday() in (5, 6):  # Saturday or Sunday
         target_time = target_time + timedelta(days=1)
     
     seconds_until = (target_time - now).total_seconds()
@@ -173,10 +180,10 @@ async def run_pipeline():
 
 
 async def daily_scheduler():
-    """Run the pipeline once daily at 05:00 ET (Pre-Market Brief)."""
+    """Run the pipeline once daily at 05:00 ET (Pre-Market Brief) on trading days only."""
     logger.info("=" * 50)
     logger.info("Gold_Sovereign_AI Daily Scheduler Started")
-    logger.info(f"Target execution time: {TARGET_HOUR:02d}:{TARGET_MINUTE:02d} ET")
+    logger.info(f"Target execution time: {TARGET_HOUR:02d}:{TARGET_MINUTE:02d} ET (Mon-Fri only)")
     logger.info("=" * 50)
     
     while True:
