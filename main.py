@@ -40,11 +40,11 @@ def get_seconds_until_target(target_hour: int = TARGET_HOUR, target_minute: int 
     if now >= target_time:
         target_time = target_time + timedelta(days=1)
     
-    # Skip weekends (Saturday=5, Sunday=6)
-    # CME Gold Futures: Closed Saturday & Sunday
-    # Friday's session ends at 17:00 ET Friday, reopens Sunday 18:00 ET
-    # So we only run reports Mon-Fri
-    while target_time.weekday() in (5, 6):  # Saturday or Sunday
+    # Skip Saturday only (Saturday=5)
+    # CME Gold Futures: Friday session ends 17:00 ET, reopens Sunday 18:00 ET
+    # Sunday morning report reviews Friday's session before markets reopen
+    # Reports run: Sunday, Monday, Tuesday, Wednesday, Thursday, Friday
+    while target_time.weekday() == 5:  # Saturday only
         target_time = target_time + timedelta(days=1)
     
     seconds_until = (target_time - now).total_seconds()
@@ -183,7 +183,7 @@ async def daily_scheduler():
     """Run the pipeline once daily at 05:00 ET (Pre-Market Brief) on trading days only."""
     logger.info("=" * 50)
     logger.info("Gold_Sovereign_AI Daily Scheduler Started")
-    logger.info(f"Target execution time: {TARGET_HOUR:02d}:{TARGET_MINUTE:02d} ET (Mon-Fri only)")
+    logger.info(f"Target execution time: {TARGET_HOUR:02d}:{TARGET_MINUTE:02d} ET (Sun-Fri, skip Saturday)")
     logger.info("=" * 50)
     
     while True:
