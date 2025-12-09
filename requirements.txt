@@ -6,4 +6,5 @@ ta
 python-dotenv
 requests
 pytz
+pandas-datareader
 

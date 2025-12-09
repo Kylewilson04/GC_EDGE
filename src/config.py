@@ -14,6 +14,22 @@ SYMBOLS = {
     "dxy": "DX-Y.NYB",   # US Dollar Index
     "us10y": "^TNX"      # 10-Year Treasury Yield
 }
+
+# GhostKing Protocol symbols
+GHOSTKING_SYMBOLS = {
+    "es": "ES=F",        # S&P 500 E-mini Futures
+    "us10y": "^TNX",     # 10-Year Treasury Yield
+    "us02y": "2YY=F",    # 2-Year Treasury Yield Futures
+}
+
+# FRED series for liquidity data
+FRED_SERIES = {
+    "walcl": "WALCL",         # Federal Reserve Total Assets
+    "wtregen": "WTREGEN",     # Treasury General Account
+    "rrpontsyd": "RRPONTSYD", # Overnight Reverse Repo
+}
+
 OPENROUTER_MODEL = "x-ai/grok-4.1-fast"
 VOLATILITY_LOOKBACK = 20
+LIQUIDITY_EMA_PERIOD = 20     # EMA period for Net Liquidity trend
 

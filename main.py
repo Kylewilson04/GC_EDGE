@@ -10,6 +10,7 @@ from src.cot_data import COTAnalyzer
 from src.economic_calendar import EconomicCalendar
 from src.llm_synthesis import ReasoningCore
 from src.messenger import DiscordBot
+from src.ghostking_protocol import GhostKingProtocol
 
 logging.basicConfig(
     level=logging.INFO,
@@ -65,9 +66,10 @@ async def run_pipeline():
         calendar = EconomicCalendar()
         llm = ReasoningCore()
         messenger = DiscordBot()
+        ghostking = GhostKingProtocol()
 
         # === DATA LAYER ===
-        logger.info("[1/6] Fetching CME session data...")
+        logger.info("[1/7] Fetching CME session data...")
         gold_symbol = SYMBOLS["gold"]
         
         # Fetch proper CME session-aligned data
@@ -85,7 +87,7 @@ async def run_pipeline():
         gold_hourly = await data_engine.fetch_ohlcv(gold_symbol, period="5d", interval="1h")
 
         # === MATH LAYER ===
-        logger.info("[2/6] Computing correlations...")
+        logger.info("[2/7] Computing correlations...")
         correlation_matrix = await data_engine.get_correlations()
         if not correlation_matrix.empty:
             logger.info(f"  ✓ Correlations computed")
@@ -93,7 +95,7 @@ async def run_pipeline():
             logger.info(f"  ⚠ Correlations unavailable")
 
         # === POSITIONING LAYER (moved up for event detection) ===
-        logger.info("[3/6] Fetching COT positioning & calendar...")
+        logger.info("[3/7] Fetching COT positioning & calendar...")
         cot_positioning = await cot_analyzer.get_gold_positioning()
         event_context = calendar.get_event_context()
         
@@ -108,7 +110,7 @@ async def run_pipeline():
             logger.info(f"  {event_context['risk_warning']}")
 
         # === VOLATILITY LAYER (uses event context for K-Factor) ===
-        logger.info("[4/6] Calculating volatility levels...")
+        logger.info("[4/7] Calculating volatility levels...")
         volatility_levels = data_engine.calc_volatility_levels(session_data, event_context)
         logger.info(f"  ✓ Regime: {volatility_levels.get('regime', 'NORMAL')}")
         logger.info(f"  ✓ Pivot: {volatility_levels.get('pivot', 'N/A')}")
@@ -117,7 +119,7 @@ async def run_pipeline():
             logger.info(f"  🚨 K-Factor Applied: {volatility_levels.get('k_factor')}x")
 
         # === ANALYSIS LAYER ===
-        logger.info("[5/6] Analyzing market structure...")
+        logger.info("[5/7] Analyzing market structure...")
         if gold_hourly is not None and not gold_hourly.empty:
             market_structure = analyst.analyze_market_structure(gold_hourly)
             market_regime = analyst.get_market_regime(gold_hourly)
@@ -127,6 +129,18 @@ async def run_pipeline():
             market_structure = {"vpoc": session_data.get("vwap")}
             market_regime = "Unknown"
             logger.info(f"  ⚠ Using VWAP as VPOC proxy: {session_data.get('vwap')}")
+
+        # === GHOSTKING PROTOCOL (ES1! Macro Analysis) ===
+        logger.info("[6/7] Running GhostKing Protocol (ES1! Macro Analysis)...")
+        try:
+            ghostking_analysis = await ghostking.run_analysis()
+            ghostking_report = ghostking.format_report(ghostking_analysis)
+            logger.info(f"  ✓ GhostKing Regime: {ghostking_analysis['regime'].get('liquidity_bias', 'N/A')}")
+            logger.info(f"  ✓ Macro State: {ghostking_analysis['regime'].get('macro_state', 'N/A')}")
+        except Exception as e:
+            logger.warning(f"  ⚠ GhostKing Protocol failed: {e}")
+            ghostking_analysis = None
+            ghostking_report = "\n---\n## 👻 GHOST KING PROTOCOL\n*Analysis unavailable*\n---\n"
 
         # === BUILD DATA PACKAGE ===
         market_data_dict = {
@@ -157,17 +171,22 @@ async def run_pipeline():
                 "bars_in_session": session_data["bars_in_session"],
                 "data_source": "Yahoo Finance (CME Session Aligned)",
                 "session_alignment": "18:00 ET to 17:00 ET"
-            }
+            },
+            "ghostking_protocol": ghostking_analysis  # Add GhostKing data for LLM context
         }
 
         # === LLM SYNTHESIS ===
-        logger.info("[6/6] Generating LLM report...")
+        logger.info("[7/7] Generating LLM report...")
         report = await llm.generate_report(market_data_dict)
         logger.info(f"  ✓ Report generated ({len(report)} chars)")
 
+        # Append GhostKing Protocol report
+        full_report = f"{report}\n{ghostking_report}"
+        logger.info(f"  ✓ GhostKing Protocol appended ({len(full_report)} total chars)")
+
         # === DELIVERY ===
         logger.info("Sending report to Discord...")
-        success = messenger.send_report(report)
+        success = messenger.send_report(full_report)
         
         if success:
             logger.info("=" * 50)
