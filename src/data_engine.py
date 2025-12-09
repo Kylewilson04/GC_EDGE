@@ -219,8 +219,11 @@ class MarketData:
         correlation_matrix = closes.corr()
         return correlation_matrix
 
-    def calc_volatility_levels(self, session_data: Dict) -> Dict[str, float]:
-        """Calculate volatility-based sigma levels from session data."""
+    def calc_volatility_levels(self, session_data: Dict, event_context: Dict = None) -> Dict[str, float]:
+        """
+        Calculate volatility-based sigma levels from session data.
+        Automatically expands bands on event days (CPI, NFP, FOMC, PCE).
+        """
         if not session_data:
             logger.warning("No session data for volatility calculation")
             return {}
@@ -233,18 +236,39 @@ class MarketData:
         if session_close == 0:
             return {}
         
-        # Calculate session range as volatility proxy
+        # Calculate session range as ATR proxy
         session_range = session_high - session_low
+        daily_atr = session_range  # Use session range as ATR estimate
         
-        # Use session range to estimate 1-sigma move
-        # Typically 1 sigma ≈ 0.5 * daily range for normal distribution
-        sigma_1 = session_range * 0.5
-        sigma_2 = session_range * 1.0
+        # Check for event day volatility expansion
+        is_event_day = False
+        k_factor = 1.0
+        event_code = None
+        regime = "NORMAL"
         
-        # Alternative: ATR-based calculation using the range
-        # This gives more realistic intraday levels
+        if event_context and event_context.get("is_event_day"):
+            event_code = event_context.get("event_code")
+            k_factor = event_context.get("k_factor", 1.0)
+            is_event_day = True
+            regime = f"EVENT ({event_code})"
+            logger.info(f"🚨 EVENT DAY DETECTED: {event_code} - Applying K-Factor {k_factor}x")
+        
+        # Calculate sigma based on regime
+        # Normal: 1σ = 0.5 * ATR, 2σ = 1.0 * ATR
+        # Event: Apply K-Factor expansion
+        base_sigma = session_range * 0.5
+        
+        if is_event_day:
+            # Expand bands using K-Factor
+            sigma_1 = base_sigma * k_factor
+            sigma_2 = (session_range * 1.0) * k_factor
+        else:
+            sigma_1 = base_sigma
+            sigma_2 = session_range * 1.0
         
         levels = {
+            "regime": regime,
+            "k_factor": k_factor,
             "2_sigma_up": round(pivot + sigma_2, 1),
             "1_sigma_up": round(pivot + sigma_1, 1),
             "pivot": round(pivot, 1),
@@ -253,8 +277,15 @@ class MarketData:
             "session_high": round(session_high, 1),
             "session_low": round(session_low, 1),
             "vwap": round(session_data.get("vwap", pivot), 1),
-            "session_range": round(session_range, 1)
+            "session_range": round(session_range, 1),
+            "daily_atr": round(daily_atr, 1),
+            "is_event_day": is_event_day,
+            "event_code": event_code
         }
+        
+        if is_event_day:
+            logger.info(f"📊 EVENT BANDS: {levels['2_sigma_down']:.1f} ← PIVOT {pivot:.1f} → {levels['2_sigma_up']:.1f}")
+            logger.info(f"   Normal bands would be: {round(pivot - session_range, 1)} to {round(pivot + session_range, 1)}")
 
         return levels
 

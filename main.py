@@ -92,25 +92,8 @@ async def run_pipeline():
         else:
             logger.info(f"  ⚠ Correlations unavailable")
 
-        logger.info("[3/6] Calculating volatility levels...")
-        volatility_levels = data_engine.calc_volatility_levels(session_data)
-        logger.info(f"  ✓ Pivot: {volatility_levels.get('pivot', 'N/A')}")
-        logger.info(f"  ✓ Session Range: {volatility_levels.get('session_range', 'N/A')} pts")
-
-        # === ANALYSIS LAYER ===
-        logger.info("[4/6] Analyzing market structure...")
-        if gold_hourly is not None and not gold_hourly.empty:
-            market_structure = analyst.analyze_market_structure(gold_hourly)
-            market_regime = analyst.get_market_regime(gold_hourly)
-            logger.info(f"  ✓ Regime: {market_regime}")
-            logger.info(f"  ✓ VPOC: {market_structure.get('vpoc', 'N/A')}")
-        else:
-            market_structure = {"vpoc": session_data.get("vwap")}
-            market_regime = "Unknown"
-            logger.info(f"  ⚠ Using VWAP as VPOC proxy: {session_data.get('vwap')}")
-
-        # === POSITIONING LAYER ===
-        logger.info("[5/6] Fetching COT positioning & calendar...")
+        # === POSITIONING LAYER (moved up for event detection) ===
+        logger.info("[3/6] Fetching COT positioning & calendar...")
         cot_positioning = await cot_analyzer.get_gold_positioning()
         event_context = calendar.get_event_context()
         
@@ -122,7 +105,28 @@ async def run_pipeline():
             logger.info("  ⚠ COT data not available")
         
         if event_context.get("risk_warning"):
-            logger.info(f"  ⚠ {event_context['risk_warning']}")
+            logger.info(f"  {event_context['risk_warning']}")
+
+        # === VOLATILITY LAYER (uses event context for K-Factor) ===
+        logger.info("[4/6] Calculating volatility levels...")
+        volatility_levels = data_engine.calc_volatility_levels(session_data, event_context)
+        logger.info(f"  ✓ Regime: {volatility_levels.get('regime', 'NORMAL')}")
+        logger.info(f"  ✓ Pivot: {volatility_levels.get('pivot', 'N/A')}")
+        logger.info(f"  ✓ Session Range: {volatility_levels.get('session_range', 'N/A')} pts")
+        if volatility_levels.get('is_event_day'):
+            logger.info(f"  🚨 K-Factor Applied: {volatility_levels.get('k_factor')}x")
+
+        # === ANALYSIS LAYER ===
+        logger.info("[5/6] Analyzing market structure...")
+        if gold_hourly is not None and not gold_hourly.empty:
+            market_structure = analyst.analyze_market_structure(gold_hourly)
+            market_regime = analyst.get_market_regime(gold_hourly)
+            logger.info(f"  ✓ Structure Regime: {market_regime}")
+            logger.info(f"  ✓ VPOC: {market_structure.get('vpoc', 'N/A')}")
+        else:
+            market_structure = {"vpoc": session_data.get("vwap")}
+            market_regime = "Unknown"
+            logger.info(f"  ⚠ Using VWAP as VPOC proxy: {session_data.get('vwap')}")
 
         # === BUILD DATA PACKAGE ===
         market_data_dict = {
