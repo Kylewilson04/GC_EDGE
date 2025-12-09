@@ -58,42 +58,56 @@ class GhostKingProtocol:
         self._cache = {}
         
     async def fetch_yield_data(self) -> Dict[str, Optional[float]]:
-        """Fetch current Treasury yields from Yahoo Finance."""
+        """Fetch current Treasury yields from FRED (most reliable source)."""
         def _fetch_sync():
-            yields = {}
+            yields = {"US10Y": None, "US02Y": None}
             
-            try:
-                # Fetch 10-Year yield
-                us10y = yf.download("^TNX", period="5d", interval="1d", progress=False)
-                if us10y is not None and not us10y.empty:
-                    if isinstance(us10y.columns, pd.MultiIndex):
-                        us10y.columns = us10y.columns.get_level_values(0)
-                    yields["US10Y"] = float(us10y["Close"].iloc[-1])
-                else:
-                    yields["US10Y"] = None
+            # Use FRED for BOTH yields - most reliable source
+            if FRED_AVAILABLE:
+                try:
+                    end_date = datetime.now()
+                    start_date = end_date - timedelta(days=10)
                     
-                # Fetch 2-Year yield (^IRX is 13-week, use different approach)
-                # Try fetching 2-Year from alternate source
-                us02y = yf.download("2YY=F", period="5d", interval="1d", progress=False)
-                if us02y is not None and not us02y.empty:
-                    if isinstance(us02y.columns, pd.MultiIndex):
-                        us02y.columns = us02y.columns.get_level_values(0)
-                    yields["US02Y"] = float(us02y["Close"].iloc[-1])
-                else:
-                    # Fallback: try ^IRX and adjust
-                    irx = yf.download("^IRX", period="5d", interval="1d", progress=False)
-                    if irx is not None and not irx.empty:
-                        if isinstance(irx.columns, pd.MultiIndex):
-                            irx.columns = irx.columns.get_level_values(0)
-                        # Use 13-week as proxy (typically lower than 2Y)
-                        yields["US02Y"] = float(irx["Close"].iloc[-1])
-                    else:
-                        yields["US02Y"] = None
-                        
-            except Exception as e:
-                logger.error(f"Error fetching yield data: {e}")
-                yields["US10Y"] = None
-                yields["US02Y"] = None
+                    # Fetch 10-Year from FRED (DGS10)
+                    dgs10 = web.DataReader("DGS10", "fred", start_date, end_date)
+                    if dgs10 is not None and not dgs10.empty:
+                        dgs10_clean = dgs10["DGS10"].dropna()
+                        if not dgs10_clean.empty:
+                            yields["US10Y"] = float(dgs10_clean.iloc[-1])
+                            logger.info(f"Fetched US10Y from FRED DGS10: {yields['US10Y']}%")
+                    
+                    # Fetch 2-Year from FRED (DGS2)
+                    dgs2 = web.DataReader("DGS2", "fred", start_date, end_date)
+                    if dgs2 is not None and not dgs2.empty:
+                        dgs2_clean = dgs2["DGS2"].dropna()
+                        if not dgs2_clean.empty:
+                            yields["US02Y"] = float(dgs2_clean.iloc[-1])
+                            logger.info(f"Fetched US02Y from FRED DGS2: {yields['US02Y']}%")
+                            
+                except Exception as e:
+                    logger.warning(f"FRED yield fetch failed: {e}")
+            
+            # Fallback to Yahoo Finance if FRED unavailable
+            if yields["US10Y"] is None:
+                try:
+                    # Create fresh Ticker object to avoid caching issues
+                    ticker = yf.Ticker("^TNX")
+                    hist = ticker.history(period="5d")
+                    if hist is not None and not hist.empty:
+                        yields["US10Y"] = float(hist["Close"].iloc[-1])
+                        logger.info(f"Fetched US10Y from Yahoo ^TNX: {yields['US10Y']}%")
+                except Exception as e:
+                    logger.warning(f"Yahoo ^TNX fetch failed: {e}")
+                    
+            if yields["US02Y"] is None:
+                try:
+                    ticker = yf.Ticker("^IRX")
+                    hist = ticker.history(period="5d")
+                    if hist is not None and not hist.empty:
+                        yields["US02Y"] = float(hist["Close"].iloc[-1])
+                        logger.info(f"Fetched US02Y from Yahoo ^IRX: {yields['US02Y']}%")
+                except Exception as e:
+                    logger.warning(f"Yahoo ^IRX fetch failed: {e}")
                 
             return yields
             
@@ -155,11 +169,21 @@ class GhostKingProtocol:
         """Fetch current ES1! (S&P 500 Futures) price."""
         def _fetch_sync():
             try:
-                es = yf.download(ES_SYMBOL, period="5d", interval="1d", progress=False)
-                if es is not None and not es.empty:
-                    if isinstance(es.columns, pd.MultiIndex):
-                        es.columns = es.columns.get_level_values(0)
-                    return float(es["Close"].iloc[-1])
+                logger.info(f"Fetching ES price from symbol: {ES_SYMBOL}")
+                # Use Ticker object to avoid yf.download caching issues
+                ticker = yf.Ticker(ES_SYMBOL)
+                hist = ticker.history(period="5d")
+                
+                if hist is not None and not hist.empty:
+                    price = float(hist["Close"].iloc[-1])
+                    
+                    # Sanity check: ES should be between 4000-7000 (current S&P range)
+                    if 4000 <= price <= 7000:
+                        logger.info(f"ES price fetched: ${price:,.2f}")
+                        return price
+                    else:
+                        logger.warning(f"ES price ${price:,.2f} outside expected range 4000-7000")
+                        return None
             except Exception as e:
                 logger.error(f"Error fetching ES price: {e}")
             return None

@@ -204,7 +204,12 @@ class MarketData:
 
         closes = pd.DataFrame()
         for name, df in valid_data:
-            closes[name.upper()] = df["close"]
+            # Handle yfinance API change - close might be DataFrame or Series
+            close_data = df["close"]
+            if isinstance(close_data, pd.DataFrame):
+                # If DataFrame, take the first column or squeeze to Series
+                close_data = close_data.iloc[:, 0] if close_data.shape[1] > 0 else close_data.squeeze()
+            closes[name.upper()] = close_data
 
         if closes.empty:
             return pd.DataFrame()

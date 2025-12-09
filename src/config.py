@@ -1,7 +1,27 @@
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load .env from the project root directory (handle Google Drive paths)
+env_path = Path(__file__).resolve().parent.parent / ".env"
+loaded = load_dotenv(dotenv_path=str(env_path))
+
+# Debug: print if key was loaded
+_api_key = os.getenv("OPENROUTER_API_KEY", "")
+if _api_key:
+    print(f"✓ API key loaded ({len(_api_key)} chars)")
+else:
+    # Try current working directory as fallback
+    cwd_env = Path.cwd() / ".env"
+    if cwd_env.exists():
+        load_dotenv(dotenv_path=str(cwd_env))
+        _api_key = os.getenv("OPENROUTER_API_KEY", "")
+        if _api_key:
+            print(f"✓ API key loaded from cwd ({len(_api_key)} chars)")
+        else:
+            print(f"⚠ API key NOT found in .env files")
+    else:
+        print(f"⚠ API key NOT found. Checked: {env_path}")
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
