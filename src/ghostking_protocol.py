@@ -168,24 +168,46 @@ class GhostKingProtocol:
     async def fetch_es_price(self) -> Optional[float]:
         """Fetch current ES1! (S&P 500 Futures) price."""
         def _fetch_sync():
+            # Clear yfinance cache to avoid stale/mixed data
             try:
-                logger.info(f"Fetching ES price from symbol: {ES_SYMBOL}")
-                # Use Ticker object to avoid yf.download caching issues
-                ticker = yf.Ticker(ES_SYMBOL)
-                hist = ticker.history(period="5d")
+                import yfinance.shared as shared
+                shared._ERRORS = {}
+                shared._REQUESTS = {}
+            except:
+                pass
+            
+            # Try ES=F first
+            try:
+                logger.info("Fetching ES price from ES=F")
+                ticker = yf.Ticker("ES=F")
+                hist = ticker.history(period="2d")
                 
                 if hist is not None and not hist.empty:
                     price = float(hist["Close"].iloc[-1])
-                    
-                    # Sanity check: ES should be between 4000-7000 (current S&P range)
-                    if 4000 <= price <= 7000:
-                        logger.info(f"ES price fetched: ${price:,.2f}")
+                    # ES should track S&P 500 (~6000-6200 as of Dec 2024)
+                    if 5500 <= price <= 6500:
+                        logger.info(f"ES price from ES=F: ${price:,.2f}")
                         return price
                     else:
-                        logger.warning(f"ES price ${price:,.2f} outside expected range 4000-7000")
-                        return None
+                        logger.warning(f"ES=F returned ${price:,.2f} - outside expected range")
             except Exception as e:
-                logger.error(f"Error fetching ES price: {e}")
+                logger.warning(f"ES=F fetch failed: {e}")
+            
+            # Fallback: Use SPY ETF * 10 as proxy
+            try:
+                logger.info("Falling back to SPY ETF as ES proxy")
+                spy = yf.Ticker("SPY")
+                hist = spy.history(period="2d")
+                
+                if hist is not None and not hist.empty:
+                    spy_price = float(hist["Close"].iloc[-1])
+                    # SPY trades at ~1/10th of ES
+                    es_proxy = spy_price * 10
+                    logger.info(f"ES proxy from SPY: ${es_proxy:,.2f} (SPY=${spy_price:.2f})")
+                    return es_proxy
+            except Exception as e:
+                logger.warning(f"SPY fallback failed: {e}")
+            
             return None
             
         return await asyncio.to_thread(_fetch_sync)
